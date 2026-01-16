@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { settingsStorage } from '../utils/settingsStorage';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TimerSettings } from '../types/settings';
+import { settingsStorage } from '../utils/settingsStorage';
 
 export function useTimer(onTimerEnd: () => void) {
   const [isActive, setIsActive] = useState(false);
