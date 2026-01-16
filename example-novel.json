@@ -1,0 +1,24 @@
+{
+  "id": "example-1",
+  "title": "Truyện Mẫu",
+  "author": "Tác giả mẫu",
+  "description": "Đây là truyện mẫu để test ứng dụng đọc truyện text-to-speech. Bạn có thể import file này để bắt đầu sử dụng ngay.",
+  "chapters": [
+    {
+      "id": "ch1",
+      "title": "Chương 1: Khởi đầu",
+      "content": "Đây là nội dung chương một của truyện mẫu. Ứng dụng sẽ đọc text này bằng giọng nói tiếng Việt thông qua trình duyệt.\n\nBạn có thể sử dụng các nút điều khiển để phát, tạm dừng, chuyển chương trước hoặc sau. Ứng dụng sẽ tự động lưu tiến độ đọc của bạn vào localStorage.\n\nKhi một chương kết thúc, ứng dụng có thể tự động chuyển sang chương tiếp theo nếu bạn đang ở chế độ phát."
+    },
+    {
+      "id": "ch2",
+      "title": "Chương 2: Tiếp tục",
+      "content": "Đây là nội dung chương hai. Ứng dụng hỗ trợ đọc nhiều chương liên tiếp.\n\nBạn có thể chọn giọng nói tiếng Việt từ danh sách các giọng nói có sẵn trên trình duyệt của bạn. Mỗi trình duyệt có thể có các giọng nói khác nhau.\n\nNội dung của chương có thể được format với nhiều đoạn văn. Ứng dụng sẽ giữ nguyên định dạng khi hiển thị."
+    },
+    {
+      "id": "ch3",
+      "title": "Chương 3: Kết thúc",
+      "content": "Đây là chương cuối cùng của truyện mẫu.\n\nBạn có thể import nhiều file JSON khác nhau để thêm nhiều truyện vào thư viện. Mỗi truyện có thể có số lượng chương khác nhau.\n\nNếu bạn import cùng một truyện nhiều lần, các chương mới sẽ được thêm vào mà không bị trùng lặp.\n\nChúc bạn có trải nghiệm đọc truyện thú vị!"
+    }
+  ]
+}
+
