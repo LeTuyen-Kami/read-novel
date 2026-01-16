@@ -9,7 +9,6 @@ export function useTimer(onTimerEnd: () => void) {
     settingsStorage.getTimerSettings()
   );
   const intervalRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number | null>(null);
   const initialTimeRef = useRef(0);
 
   // Load settings on mount
