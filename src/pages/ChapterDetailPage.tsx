@@ -1,332 +1,717 @@
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings } from 'lucide-react';
-import { ChapterList } from '../components/ChapterList';
-import { ChapterListButton } from '../components/ChapterListButton';
-import { PlayerControls } from '../components/PlayerControls';
-import { ReadingView, type ReadingViewRef } from '../components/ReadingView';
-import { SettingsModal } from '../components/SettingsModal';
-import { ImportButton } from '../components/ImportButton';
-import { useNovels } from '../hooks/useNovels';
-import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
-import { useTimer } from '../hooks/useTimer';
+import { ArrowLeft, Settings } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import NoSleep from "nosleep.js";
+import { ChapterList } from "../components/ChapterList";
+import { ChapterListButton } from "../components/ChapterListButton";
+import { ImportButton } from "../components/ImportButton";
+import { PlayerControls } from "../components/PlayerControls";
+import { ReadingView, type ReadingViewRef } from "../components/ReadingView";
+import { SettingsModal } from "../components/SettingsModal";
+import { useNovels } from "../hooks/useNovels";
+import { useSpeechSynthesis } from "../hooks/useSpeechSynthesis";
+import { useTimer } from "../hooks/useTimer";
+import { splitTextNested } from "../utils/helper";
 
 export function ChapterDetailPage() {
-  const { novelId, chapterId } = useParams<{ novelId: string; chapterId: string }>();
-  const navigate = useNavigate();
-  const {
-    currentNovel,
-    currentChapterId,
-    importNovel,
-    selectNovel,
-    selectChapter,
-    getCurrentChapter,
-    getNextChapterId,
-    getPreviousChapterId,
-  } = useNovels();
+	const { novelId, chapterId } = useParams<{
+		novelId: string;
+		chapterId: string;
+	}>();
+	const navigate = useNavigate();
+	const {
+		currentNovel,
+		currentChapterId,
+		importNovel,
+		selectNovel,
+		selectChapter,
+		getCurrentChapter,
+		getNextChapterId,
+		getPreviousChapterId,
+	} = useNovels();
 
-  const {
-    voices,
-    vietnameseVoices,
-    selectedVoice,
-    rate,
-    pitch,
-    progress,
-    isPlaying,
-    speak,
-    pause,
-    stop,
-    changeVoice,
-    changeRate,
-    changePitch,
-  } = useSpeechSynthesis();
+	const {
+		vietnameseVoices,
+		selectedVoice,
+		rate,
+		pitch,
+		pause,
+		stop,
+		changeVoice: originalChangeVoice,
+		changeRate: originalChangeRate,
+		changePitch: originalChangePitch,
+		voices: allVoices,
+	} = useSpeechSynthesis();
 
-  const {
-    isActive: isTimerActive,
-    timeLeft,
-    timerSettings,
-    startTimer,
-    stopTimer,
-    updateTimerSettings,
-    formatTime,
-  } = useTimer(() => {
-    stop();
-  });
+	const {
+		isActive: isTimerActive,
+		timeLeft,
+		timerSettings,
+		startTimer,
+		stopTimer,
+		updateTimerSettings,
+		formatTime,
+	} = useTimer(() => {
+		stop();
+	});
 
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isChapterListOpen, setIsChapterListOpen] = useState(false);
-  const [chaptersPlayed, setChaptersPlayed] = useState(0);
-  const [wasPlayingBeforeChapterChange, setWasPlayingBeforeChapterChange] = useState(false);
-  const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
-  const readingViewRef = useRef<ReadingViewRef>(null);
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [isChapterListOpen, setIsChapterListOpen] = useState(false);
+	const [chaptersPlayed, setChaptersPlayed] = useState(0);
+	const [wasPlayingBeforeChapterChange, setWasPlayingBeforeChapterChange] =
+		useState(false);
+	const [currentParagraphIndex, setCurrentParagraphIndex] = useState(0);
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [currentSegmentId, setCurrentSegmentId] = useState<string | null>(null);
+	const [isSpeaking, setIsSpeaking] = useState(false);
+	const readingViewRef = useRef<ReadingViewRef>(null);
+	const synthRef = useRef<SpeechSynthesis | null>(null);
+	const noSleepRef = useRef<NoSleep | null>(null);
+	const currentSegmentIndexRef = useRef(0);
+	const flattenedSegmentsRef = useRef<
+		Array<{ text: string; id: string; type: string }>
+	>([]);
 
-  // Load novel and chapter
-  useEffect(() => {
-    if (novelId && currentNovel?.id !== novelId) {
-      selectNovel(novelId);
-    }
-  }, [novelId, currentNovel?.id, selectNovel]);
+	// Wrap change functions to sync state
+	const changeVoice = useCallback(
+		(voiceName: string) => {
+			if (isSpeaking && synthRef.current) {
+				synthRef.current.cancel();
+				setIsSpeaking(false);
+				setCurrentSegmentId(null);
+			}
+			originalChangeVoice(voiceName);
+		},
+		[isSpeaking, originalChangeVoice],
+	);
 
-  useEffect(() => {
-    if (chapterId && currentChapterId !== chapterId && currentNovel) {
-      selectChapter(chapterId);
-    }
-  }, [chapterId, currentChapterId, currentNovel, selectChapter]);
+	const changeRate = useCallback(
+		(newRate: number) => {
+			if (isSpeaking && synthRef.current) {
+				synthRef.current.cancel();
+				setIsSpeaking(false);
+				setCurrentSegmentId(null);
+			}
+			originalChangeRate(newRate);
+		},
+		[isSpeaking, originalChangeRate],
+	);
 
-  const { chapter } = getCurrentChapter();
-  const nextChapterId = getNextChapterId();
-  const previousChapterId = getPreviousChapterId();
+	const changePitch = useCallback(
+		(newPitch: number) => {
+			if (isSpeaking && synthRef.current) {
+				synthRef.current.cancel();
+				setIsSpeaking(false);
+				setCurrentSegmentId(null);
+			}
+			originalChangePitch(newPitch);
+		},
+		[isSpeaking, originalChangePitch],
+	);
 
-  const handlePlayPause = () => {
-    if (!chapter) return;
+	// Initialize speech synthesis
+	useEffect(() => {
+		synthRef.current = window.speechSynthesis;
+	}, []);
 
-    if (isPlaying) {
-      pause();
-    } else {
-      if (timerSettings.enabled && !isTimerActive) {
-        startTimer();
-      }
+	// Initialize NoSleep
+	useEffect(() => {
+		noSleepRef.current = new NoSleep();
+	}, []);
 
-      speak(chapter.content, () => {
-        if (timerSettings.enabled && timerSettings.type === 'chapter') {
-          const newCount = chaptersPlayed + 1;
-          setChaptersPlayed(newCount);
-          if (newCount >= timerSettings.value) {
-            stopTimer();
-            return;
-          }
-        }
+	// Load novel and chapter
+	useEffect(() => {
+		if (novelId && currentNovel?.id !== novelId) {
+			selectNovel(novelId);
+		}
+	}, [novelId, currentNovel?.id, selectNovel]);
 
-        if (nextChapterId && novelId) {
-          navigate(`/novel/${novelId}/chapter/${nextChapterId}`);
-        }
-      });
-    }
-  };
+	useEffect(() => {
+		if (chapterId && currentChapterId !== chapterId && currentNovel) {
+			selectChapter(chapterId);
+			// Reset segment index when chapter changes
+			currentSegmentIndexRef.current = 0;
+			setCurrentSegmentId(null);
+		}
+	}, [chapterId, currentChapterId, currentNovel, selectChapter]);
 
-  // Handle chapter change - stop current speech and resume if was playing
-  useEffect(() => {
-    if (chapter && wasPlayingBeforeChapterChange) {
-      stop();
-      setWasPlayingBeforeChapterChange(false);
-      setTimeout(() => {
-        speak(chapter.content, () => {
-          if (timerSettings.enabled && timerSettings.type === 'chapter') {
-            const newCount = chaptersPlayed + 1;
-            setChaptersPlayed(newCount);
-            if (newCount >= timerSettings.value) {
-              stopTimer();
-              return;
-            }
-          }
+	const { chapter } = getCurrentChapter();
+	const nextChapterId = getNextChapterId();
+	const previousChapterId = getPreviousChapterId();
 
-          if (nextChapterId && novelId) {
-            navigate(`/novel/${novelId}/chapter/${nextChapterId}`);
-          }
-        });
-      }, 100);
-    } else if (chapter && isPlaying) {
-      stop();
-    }
-  }, [chapterId]); // eslint-disable-line react-hooks/exhaustive-deps
+	// Split text into nested segments with minLength = 500
+	const nestedResult = useMemo(() => {
+		if (!chapter) return [];
+		try {
+			return splitTextNested(chapter.content, 500);
+		} catch (error) {
+			console.error("Error splitting text:", error);
+			return [];
+		}
+	}, [chapter?.content]);
 
-  // Reset chapters played when timer settings change
-  useEffect(() => {
-    if (timerSettings.type === 'chapter') {
-      setChaptersPlayed(0);
-    }
-  }, [timerSettings.type, timerSettings.value]);
+	// Flatten nested result
+	const flattenedSegments = useMemo(() => {
+		return nestedResult.flatMap((item) => {
+			if (item?.segments?.length === 0) {
+				return {
+					text: item.text,
+					type: item.type as string,
+					id: item.id,
+				};
+			}
+			return (
+				item?.segments?.map((s) => {
+					return {
+						text: s.text,
+						type: s.type,
+						id: s.id,
+					};
+				}) || []
+			);
+		});
+	}, [nestedResult]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stop();
-      stopTimer();
-    };
-  }, [stop, stopTimer]);
+	// Update ref when segments change
+	useEffect(() => {
+		flattenedSegmentsRef.current = flattenedSegments;
+	}, [flattenedSegments]);
 
-  const handleSelectChapter = (selectedChapterId: string) => {
-    if (novelId) {
-      navigate(`/novel/${novelId}/chapter/${selectedChapterId}`);
-    }
-  };
+	// Speak next segment
+	const speakNextSegment = useCallback(
+		(index: number) => {
+			if (!synthRef.current || !chapter) return;
 
-  const handlePrevious = () => {
-    if (previousChapterId && novelId) {
-      stop();
-      navigate(`/novel/${novelId}/chapter/${previousChapterId}`);
-    }
-  };
+			const segments = flattenedSegmentsRef.current;
+			if (index >= segments.length) {
+				// Finished reading all segments
+				setIsSpeaking(false);
+				setCurrentSegmentId(null);
 
-  const handleNext = () => {
-    if (nextChapterId && novelId) {
-      stop();
-      navigate(`/novel/${novelId}/chapter/${nextChapterId}`);
-    }
-  };
+				if (timerSettings.enabled && timerSettings.type === "chapter") {
+					const newCount = chaptersPlayed + 1;
+					setChaptersPlayed(newCount);
+					if (newCount >= timerSettings.value) {
+						stopTimer();
+						// Disable NoSleep when timer stops
+						if (noSleepRef.current) {
+							try {
+								noSleepRef.current.disable();
+							} catch (err) {
+								console.warn("NoSleep disable failed:", err);
+							}
+						}
+						return;
+					}
+				}
 
-  // Get paragraphs for current chapter
-  const getParagraphs = () => {
-    if (!chapter) return [];
-    return chapter.content.split('\n').filter((p) => p.trim().length > 0);
-  };
+				if (nextChapterId && novelId) {
+					// Set flag to auto-resume reading in next chapter
+					// Keep NoSleep enabled when auto-advancing to next chapter
+					setWasPlayingBeforeChapterChange(true);
+					navigate(`/novel/${novelId}/chapter/${nextChapterId}`);
+				} else {
+					// Disable NoSleep when finished reading and no next chapter
+					if (noSleepRef.current) {
+						try {
+							noSleepRef.current.disable();
+						} catch (err) {
+							console.warn("NoSleep disable failed:", err);
+						}
+					}
+				}
+				return;
+			}
 
-  const paragraphs = getParagraphs();
-  const totalParagraphs = paragraphs.length;
+			const segment = segments[index];
+			setCurrentSegmentId(segment.id);
+			currentSegmentIndexRef.current = index;
 
-  const handlePreviousParagraph = () => {
-    if (currentParagraphIndex > 0) {
-      const newIndex = currentParagraphIndex - 1;
-      setCurrentParagraphIndex(newIndex);
-      readingViewRef.current?.scrollToParagraph(newIndex);
-    }
-  };
+			// Scroll to segment - use setTimeout to ensure DOM is updated
+			setTimeout(() => {
+				readingViewRef.current?.scrollToSegment(segment.id);
+			}, 100);
 
-  const handleNextParagraph = () => {
-    if (currentParagraphIndex < totalParagraphs - 1) {
-      const newIndex = currentParagraphIndex + 1;
-      setCurrentParagraphIndex(newIndex);
-      readingViewRef.current?.scrollToParagraph(newIndex);
-    }
-  };
+			const utterance = new SpeechSynthesisUtterance(segment.text);
 
-  // Update current paragraph index based on scroll
-  useEffect(() => {
-    if (!readingViewRef.current || !chapter) return;
+			// Set voice
+			if (selectedVoice) {
+				const voices = synthRef.current.getVoices();
+				const voice = voices.find((v) => v.name === selectedVoice);
+				if (voice) {
+					utterance.voice = voice;
+				}
+			}
 
-    const updateParagraphIndex = () => {
-      const index = readingViewRef.current?.getCurrentParagraphIndex() || 0;
-      setCurrentParagraphIndex(index);
-    };
+			utterance.lang = "vi-VN";
+			utterance.rate = rate;
+			utterance.pitch = pitch;
 
-    // Update on scroll
-    const interval = setInterval(updateParagraphIndex, 500);
-    updateParagraphIndex(); // Initial update
+			utterance.onend = () => {
+				setCurrentSegmentId(null);
+				speakNextSegment(index + 1);
+			};
 
-    return () => clearInterval(interval);
-  }, [chapter?.id]);
+			utterance.onerror = () => {
+				setErrorMessage("Có lỗi xảy ra khi đọc. Vui lòng thử lại.");
+				setIsSpeaking(false);
+				setCurrentSegmentId(null);
+				// Disable NoSleep on error
+				if (noSleepRef.current) {
+					try {
+						noSleepRef.current.disable();
+					} catch (err) {
+						console.warn("NoSleep disable failed:", err);
+					}
+				}
+			};
 
-  if (!currentNovel || !chapter) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-500 dark:text-slate-400">Đang tải...</p>
-      </div>
-    );
-  }
+			synthRef.current.speak(utterance);
+		},
+		[
+			chapter,
+			selectedVoice,
+			rate,
+			pitch,
+			timerSettings,
+			chaptersPlayed,
+			nextChapterId,
+			novelId,
+			navigate,
+			stopTimer,
+		],
+	);
 
-  return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-slate-900">
-      {/* Header */}
-      <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <button
-                onClick={() => navigate(`/novel/${novelId}`)}
-                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors duration-200 cursor-pointer shrink-0"
-                aria-label="Quay lại danh sách chương"
-              >
-                <ArrowLeft className="w-5 h-5 text-slate-700 dark:text-slate-300" />
-              </button>
-              <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
-                {currentNovel.title}
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors duration-200 cursor-pointer"
-                aria-label="Cài đặt"
-              >
-                <Settings className="w-5 h-5 text-slate-700 dark:text-slate-300" />
-              </button>
-              <ImportButton onImport={importNovel} />
-            </div>
-          </div>
-        </div>
-      </header>
+	const handlePlayPause = () => {
+		if (!chapter) return;
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-hidden pb-24 md:pb-4">
-        <div className="max-w-7xl mx-auto h-full flex flex-col">
-          {/* Chapter List Button - Desktop */}
-          <div className="hidden md:block sticky top-16 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700">
-            <div className="max-w-7xl mx-auto px-4 py-3">
-              <ChapterListButton
-                onClick={() => setIsChapterListOpen(true)}
-                chapterCount={currentNovel.chapters.length}
-              />
-            </div>
-          </div>
+		if (isSpeaking) {
+			// Stop speaking
+			if (synthRef.current) {
+				synthRef.current.cancel();
+			}
+			setIsSpeaking(false);
+			setCurrentSegmentId(null);
+			stop();
+			// Disable NoSleep when stopping
+			if (noSleepRef.current) {
+				try {
+					noSleepRef.current.disable();
+				} catch (err) {
+					console.warn("NoSleep disable failed:", err);
+				}
+			}
+		} else {
+			// Enable NoSleep when starting (must be in user interaction)
+			if (noSleepRef.current) {
+				try {
+					noSleepRef.current.enable();
+				} catch (err) {
+					console.warn("NoSleep enable failed:", err);
+				}
+			}
 
-          {/* Chapter List Button - Mobile */}
-          <div className="md:hidden px-4 py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
-            <ChapterListButton
-              onClick={() => setIsChapterListOpen(true)}
-              chapterCount={currentNovel.chapters.length}
-            />
-          </div>
+			if (timerSettings.enabled && !isTimerActive) {
+				startTimer();
+			}
 
-          {/* Reading View */}
-          <div className="flex-1 min-h-0">
-            <ReadingView
-              ref={readingViewRef}
-              chapter={chapter}
-              novelId={novelId || null}
-              currentParagraphIndex={currentParagraphIndex}
-            />
-          </div>
-        </div>
-      </main>
+			setErrorMessage(null); // Clear previous error
+			setIsSpeaking(true);
+			currentSegmentIndexRef.current = 0;
+			speakNextSegment(0);
+		}
+	};
 
-      {/* Player Controls - Fixed Bottom (Mobile) */}
-      <div className="fixed bottom-0 left-0 right-0 md:relative md:border-t md:border-slate-200 md:dark:border-slate-700">
-        <PlayerControls
-          isPlaying={isPlaying}
-          progress={progress}
-          onPlay={handlePlayPause}
-          onPause={pause}
-          onPrevious={handlePrevious}
-          onNext={handleNext}
-          onPreviousParagraph={handlePreviousParagraph}
-          onNextParagraph={handleNextParagraph}
-          onSeek={(percentage) => {
-            console.log('Seek to:', percentage);
-          }}
-          canGoPrevious={!!previousChapterId}
-          canGoNext={!!nextChapterId}
-          canGoPreviousParagraph={currentParagraphIndex > 0}
-          canGoNextParagraph={currentParagraphIndex < totalParagraphs - 1}
-          chapterTitle={chapter.title}
-          timeLeft={isTimerActive ? formatTime(timeLeft) : undefined}
-        />
-      </div>
+	// Handle chapter change - stop current speech and resume if was playing
+	useEffect(() => {
+		if (chapter && wasPlayingBeforeChapterChange) {
+			if (synthRef.current) {
+				synthRef.current.cancel();
+			}
+			setIsSpeaking(false);
+			setCurrentSegmentId(null);
+			setWasPlayingBeforeChapterChange(false);
+			setTimeout(() => {
+				// Ensure NoSleep is enabled when resuming
+				if (noSleepRef.current) {
+					try {
+						noSleepRef.current.enable();
+					} catch (err) {
+						console.warn("NoSleep enable failed:", err);
+					}
+				}
+				setIsSpeaking(true);
+				currentSegmentIndexRef.current = 0;
+				speakNextSegment(0);
+			}, 100);
+		} else if (chapter && isSpeaking) {
+			if (synthRef.current) {
+				synthRef.current.cancel();
+			}
+			setIsSpeaking(false);
+			setCurrentSegmentId(null);
+		}
+	}, [chapterId, speakNextSegment]); // eslint-disable-line react-hooks/exhaustive-deps
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        vietnameseVoices={vietnameseVoices}
-        allVoices={voices}
-        selectedVoice={selectedVoice}
-        rate={rate}
-        pitch={pitch}
-        timerSettings={timerSettings}
-        onVoiceChange={changeVoice}
-        onRateChange={changeRate}
-        onPitchChange={changePitch}
-        onTimerSettingsChange={updateTimerSettings}
-      />
+	// Reset chapters played when timer settings change
+	useEffect(() => {
+		if (timerSettings.type === "chapter") {
+			setChaptersPlayed(0);
+		}
+	}, [timerSettings.type, timerSettings.value]);
 
-      {/* Chapter List Drawer */}
-      <ChapterList
-        chapters={currentNovel.chapters}
-        currentChapterId={currentChapterId}
-        onSelect={handleSelectChapter}
-        isOpen={isChapterListOpen}
-        onClose={() => setIsChapterListOpen(false)}
-      />
-    </div>
-  );
+	// Cleanup on unmount
+	useEffect(() => {
+		return () => {
+			if (synthRef.current) {
+				synthRef.current.cancel();
+			}
+			setIsSpeaking(false);
+			setCurrentSegmentId(null);
+			stop();
+			stopTimer();
+			// Disable NoSleep on cleanup
+			if (noSleepRef.current) {
+				try {
+					noSleepRef.current.disable();
+				} catch (err) {
+					console.warn("NoSleep disable failed:", err);
+				}
+			}
+		};
+	}, [stop, stopTimer]);
+
+	const handleSelectChapter = (selectedChapterId: string) => {
+		if (novelId) {
+			navigate(`/novel/${novelId}/chapter/${selectedChapterId}`);
+		}
+	};
+
+	const handlePrevious = () => {
+		if (previousChapterId && novelId) {
+			if (synthRef.current) {
+				synthRef.current.cancel();
+			}
+			setIsSpeaking(false);
+			setCurrentSegmentId(null);
+			stop();
+			// Disable NoSleep when navigating
+			if (noSleepRef.current) {
+				try {
+					noSleepRef.current.disable();
+				} catch (err) {
+					console.warn("NoSleep disable failed:", err);
+				}
+			}
+			navigate(`/novel/${novelId}/chapter/${previousChapterId}`);
+		}
+	};
+
+	const handleNext = () => {
+		if (nextChapterId && novelId) {
+			if (synthRef.current) {
+				synthRef.current.cancel();
+			}
+			setIsSpeaking(false);
+			setCurrentSegmentId(null);
+			stop();
+			// Disable NoSleep when navigating
+			if (noSleepRef.current) {
+				try {
+					noSleepRef.current.disable();
+				} catch (err) {
+					console.warn("NoSleep disable failed:", err);
+				}
+			}
+			navigate(`/novel/${novelId}/chapter/${nextChapterId}`);
+		}
+	};
+
+	// Setup Media Session API for lock screen controls
+	useEffect(() => {
+		if ("mediaSession" in navigator && chapter && currentNovel) {
+			navigator.mediaSession.metadata = new MediaMetadata({
+				title: chapter.title,
+				artist: currentNovel.title,
+			});
+
+			navigator.mediaSession.setActionHandler("play", () => {
+				if (!isSpeaking) {
+					handlePlayPause();
+				}
+			});
+
+			navigator.mediaSession.setActionHandler("pause", () => {
+				if (isSpeaking) {
+					handlePlayPause();
+				}
+			});
+
+			navigator.mediaSession.setActionHandler("previoustrack", () => {
+				handlePrevious();
+			});
+
+			navigator.mediaSession.setActionHandler("nexttrack", () => {
+				handleNext();
+			});
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [chapter, currentNovel, isSpeaking]);
+
+	// Update Media Session playback state
+	useEffect(() => {
+		if ("mediaSession" in navigator) {
+			navigator.mediaSession.playbackState = isSpeaking
+				? "playing"
+				: "paused";
+		}
+	}, [isSpeaking]);
+
+	// Get paragraphs for current chapter
+	const getParagraphs = () => {
+		if (!chapter) return [];
+		return chapter.content.split("\n").filter((p) => p.trim().length > 0);
+	};
+
+	const paragraphs = getParagraphs();
+	const totalParagraphs = paragraphs.length;
+
+	const handlePreviousParagraph = () => {
+		if (currentParagraphIndex > 0) {
+			const newIndex = currentParagraphIndex - 1;
+			setCurrentParagraphIndex(newIndex);
+			readingViewRef.current?.scrollToParagraph(newIndex);
+		}
+	};
+
+	const handleNextParagraph = () => {
+		if (currentParagraphIndex < totalParagraphs - 1) {
+			const newIndex = currentParagraphIndex + 1;
+			setCurrentParagraphIndex(newIndex);
+			readingViewRef.current?.scrollToParagraph(newIndex);
+		}
+	};
+
+	// Handle segment click - start reading from that segment
+	const handleSegmentClick = useCallback(
+		(segmentId: string) => {
+			if (!chapter) return;
+
+			const segments = flattenedSegmentsRef.current;
+			const segmentIndex = segments.findIndex((s) => s.id === segmentId);
+
+			if (segmentIndex === -1) return;
+
+			// Stop current speech if playing
+			if (synthRef.current) {
+				synthRef.current.cancel();
+			}
+			setIsSpeaking(false);
+			setCurrentSegmentId(null);
+
+			// Enable NoSleep when clicking segment (user interaction)
+			if (noSleepRef.current) {
+				try {
+					noSleepRef.current.enable();
+				} catch (err) {
+					console.warn("NoSleep enable failed:", err);
+				}
+			}
+
+			// Scroll to segment first
+			setTimeout(() => {
+				readingViewRef.current?.scrollToSegment(segmentId);
+			}, 50);
+
+			// Start reading from this segment
+			setTimeout(() => {
+				if (timerSettings.enabled && !isTimerActive) {
+					startTimer();
+				}
+				setErrorMessage(null);
+				setIsSpeaking(true);
+				currentSegmentIndexRef.current = segmentIndex;
+				speakNextSegment(segmentIndex);
+			}, 150);
+		},
+		[chapter, timerSettings, isTimerActive, startTimer, speakNextSegment],
+	);
+
+	// Update current paragraph index based on scroll
+	useEffect(() => {
+		if (!readingViewRef.current || !chapter) return;
+
+		const updateParagraphIndex = () => {
+			const index = readingViewRef.current?.getCurrentParagraphIndex() || 0;
+			setCurrentParagraphIndex(index);
+		};
+
+		// Update on scroll
+		const interval = setInterval(updateParagraphIndex, 500);
+		updateParagraphIndex(); // Initial update
+
+		return () => clearInterval(interval);
+	}, [chapter]);
+
+	if (!currentNovel || !chapter) {
+		return (
+			<div className="min-h-screen flex items-center justify-center">
+				<p className="text-slate-500 dark:text-slate-400">Đang tải...</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="min-h-screen flex flex-col bg-white dark:bg-slate-900">
+			{/* Header */}
+			<header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700">
+				<div className="max-w-7xl mx-auto px-4 py-3">
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-3 flex-1 min-w-0">
+							<button
+								type="button"
+								onClick={() => navigate(`/novel/${novelId}`)}
+								className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors duration-200 cursor-pointer shrink-0"
+								aria-label="Quay lại danh sách chương"
+							>
+								<ArrowLeft className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+							</button>
+							<h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 truncate">
+								{currentNovel.title}
+							</h1>
+						</div>
+						<div className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={() => setIsSettingsOpen(true)}
+								className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors duration-200 cursor-pointer"
+								aria-label="Cài đặt"
+							>
+								<Settings className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+							</button>
+							<ImportButton onImport={importNovel} />
+						</div>
+					</div>
+				</div>
+			</header>
+
+			{/* Main Content */}
+			<main className="flex-1 overflow-hidden pb-24 md:pb-4">
+				<div className="max-w-7xl mx-auto h-full flex flex-col">
+					{/* Error Message */}
+					{/* {errorMessage && (
+						<div className="mx-4 mt-4 p-4 bg-amber-50 dark:bg-amber-900 border border-amber-200 dark:border-amber-800 rounded-lg absolute top-12 left-0 right-0">
+							<div className="flex items-start justify-between gap-2">
+								<p className="text-sm text-amber-800 dark:text-amber-200 flex-1">
+									{errorMessage}
+								</p>
+								<button
+									type="button"
+									onClick={() => setErrorMessage(null)}
+									className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 cursor-pointer"
+									aria-label="Đóng thông báo"
+								>
+									✕
+								</button>
+							</div>
+						</div>
+					)} */}
+
+					{/* Chapter List Button - Desktop */}
+					<div className="hidden md:block sticky top-16 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700">
+						<div className="max-w-7xl mx-auto px-4 py-3">
+							<ChapterListButton
+								onClick={() => setIsChapterListOpen(true)}
+								chapterCount={currentNovel.chapters.length}
+							/>
+						</div>
+					</div>
+
+					{/* Chapter List Button - Mobile */}
+					<div className="md:hidden px-4 py-3 border-b border-slate-200 dark:border-slate-700 shrink-0">
+						<ChapterListButton
+							onClick={() => setIsChapterListOpen(true)}
+							chapterCount={currentNovel.chapters.length}
+						/>
+					</div>
+
+					{/* Reading View */}
+					<div className="flex-1 min-h-0">
+						<ReadingView
+							ref={readingViewRef}
+							chapter={chapter}
+							novelId={novelId || null}
+							currentParagraphIndex={currentParagraphIndex}
+							nestedResult={nestedResult}
+							currentSegmentId={currentSegmentId}
+							onSegmentClick={handleSegmentClick}
+						/>
+					</div>
+				</div>
+			</main>
+
+			{/* Player Controls - Fixed Bottom (Mobile) */}
+			<div className="fixed bottom-0 left-0 right-0 md:relative md:border-t md:border-slate-200 md:dark:border-slate-700">
+				<PlayerControls
+					isPlaying={isSpeaking}
+					onPlay={handlePlayPause}
+					onPause={() => {
+						if (synthRef.current) {
+							synthRef.current.cancel();
+						}
+						setIsSpeaking(false);
+						setCurrentSegmentId(null);
+						pause();
+						// Disable NoSleep when pausing
+						if (noSleepRef.current) {
+							try {
+								noSleepRef.current.disable();
+							} catch (err) {
+								console.warn("NoSleep disable failed:", err);
+							}
+						}
+					}}
+					onPrevious={handlePrevious}
+					onNext={handleNext}
+					onPreviousParagraph={handlePreviousParagraph}
+					onNextParagraph={handleNextParagraph}
+					canGoPrevious={!!previousChapterId}
+					canGoNext={!!nextChapterId}
+					canGoPreviousParagraph={currentParagraphIndex > 0}
+					canGoNextParagraph={currentParagraphIndex < totalParagraphs - 1}
+					chapterTitle={chapter.title}
+					timeLeft={isTimerActive ? formatTime(timeLeft) : undefined}
+				/>
+			</div>
+
+			{/* Settings Modal */}
+			<SettingsModal
+				isOpen={isSettingsOpen}
+				onClose={() => setIsSettingsOpen(false)}
+				vietnameseVoices={vietnameseVoices}
+				allVoices={allVoices}
+				selectedVoice={selectedVoice}
+				rate={rate}
+				pitch={pitch}
+				timerSettings={timerSettings}
+				engine="native"
+				onEngineChange={() => {
+					// Engine is always native now
+				}}
+				onVoiceChange={changeVoice}
+				onRateChange={changeRate}
+				onPitchChange={changePitch}
+				onTimerSettingsChange={updateTimerSettings}
+			/>
+
+			{/* Chapter List Drawer */}
+			<ChapterList
+				chapters={currentNovel.chapters}
+				currentChapterId={currentChapterId}
+				onSelect={handleSelectChapter}
+				isOpen={isChapterListOpen}
+				onClose={() => setIsChapterListOpen(false)}
+			/>
+		</div>
+	);
 }
-

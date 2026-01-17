@@ -1,0 +1,32 @@
+diff --git a/node_modules/edge-tts-universal/dist/browser.js b/node_modules/edge-tts-universal/dist/browser.js
+index 7bb462b..7a2d2b9 100644
+--- a/node_modules/edge-tts-universal/dist/browser.js
++++ b/node_modules/edge-tts-universal/dist/browser.js
+@@ -79,9 +79,9 @@ var EdgeTTSBrowser = class {
+   /**
+    * Establishes a connection to the WebSocket server.
+    */
+-  connect() {
++  async connect() {
+     const connectionId = this.generateConnectionId();
+-    const secMsGec = this.generateSecMsGec();
++    const secMsGec = await this.generateSecMsGec();
+     const url = `${this.WSS_URL}?TrustedClientToken=${this.TRUSTED_CLIENT_TOKEN}&ConnectionId=${connectionId}&Sec-MS-GEC=${secMsGec}&Sec-MS-GEC-Version=1-130.0.2849.68`;
+     this.ws = new WebSocket(url);
+     return new Promise((resolve, reject) => {
+diff --git a/node_modules/edge-tts-universal/dist/index.js b/node_modules/edge-tts-universal/dist/index.js
+index ce4481e..72e844f 100644
+--- a/node_modules/edge-tts-universal/dist/index.js
++++ b/node_modules/edge-tts-universal/dist/index.js
+@@ -1198,9 +1198,9 @@ var EdgeTTSBrowser = class {
+   /**
+    * Establishes a connection to the WebSocket server.
+    */
+-  connect() {
++  async connect() {
+     const connectionId = this.generateConnectionId();
+-    const secMsGec = this.generateSecMsGec();
++    const secMsGec = await this.generateSecMsGec();
+     const url = `${this.WSS_URL}?TrustedClientToken=${this.TRUSTED_CLIENT_TOKEN}&ConnectionId=${connectionId}&Sec-MS-GEC=${secMsGec}&Sec-MS-GEC-Version=1-130.0.2849.68`;
+     this.ws = new WebSocket(url);
+     return new Promise((resolve, reject) => {

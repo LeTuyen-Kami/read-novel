@@ -1,0 +1,19 @@
+{
+  "name": "Đọc Truyện - Text to Speech",
+  "short_name": "Đọc Truyện",
+  "description": "Ứng dụng đọc truyện text-to-speech trên web",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

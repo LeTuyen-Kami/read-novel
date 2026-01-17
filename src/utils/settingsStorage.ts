@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     rate: 1,
     pitch: 1,
     voice: null,
+    engine: 'native', // Default to native
   },
   timer: {
     enabled: false,
