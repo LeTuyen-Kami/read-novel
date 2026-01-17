@@ -564,7 +564,7 @@ export function ChapterDetailPage() {
 	return (
 		<div className="min-h-screen flex flex-col bg-white dark:bg-slate-900">
 			{/* Header */}
-			<header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700">
+			<header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700 safe-area-inset-top">
 				<div className="max-w-7xl mx-auto px-4 py-3">
 					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-3 flex-1 min-w-0">
@@ -651,7 +651,7 @@ export function ChapterDetailPage() {
 			</main>
 
 			{/* Player Controls - Fixed Bottom (Mobile) */}
-			<div className="fixed bottom-0 left-0 right-0 md:relative md:border-t md:border-slate-200 md:dark:border-slate-700">
+			<div className="fixed bottom-0 left-0 right-0 md:relative md:border-t md:border-slate-200 md:dark:border-slate-700 safe-area-inset-bottom">
 				<PlayerControls
 					isPlaying={isSpeaking}
 					onPlay={handlePlayPause}
