@@ -1,7 +1,6 @@
 import { ArrowLeft, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import NoSleep from "nosleep.js";
 import { ChapterList } from "../components/ChapterList";
 import { ChapterListButton } from "../components/ChapterListButton";
 import { ImportButton } from "../components/ImportButton";
@@ -66,7 +65,6 @@ export function ChapterDetailPage() {
 	const [isSpeaking, setIsSpeaking] = useState(false);
 	const readingViewRef = useRef<ReadingViewRef>(null);
 	const synthRef = useRef<SpeechSynthesis | null>(null);
-	const noSleepRef = useRef<NoSleep | null>(null);
 	const currentSegmentIndexRef = useRef(0);
 	const flattenedSegmentsRef = useRef<
 		Array<{ text: string; id: string; type: string }>
@@ -112,11 +110,6 @@ export function ChapterDetailPage() {
 	// Initialize speech synthesis
 	useEffect(() => {
 		synthRef.current = window.speechSynthesis;
-	}, []);
-
-	// Initialize NoSleep
-	useEffect(() => {
-		noSleepRef.current = new NoSleep();
 	}, []);
 
 	// Load novel and chapter
@@ -193,32 +186,14 @@ export function ChapterDetailPage() {
 					setChaptersPlayed(newCount);
 					if (newCount >= timerSettings.value) {
 						stopTimer();
-						// Disable NoSleep when timer stops
-						if (noSleepRef.current) {
-							try {
-								noSleepRef.current.disable();
-							} catch (err) {
-								console.warn("NoSleep disable failed:", err);
-							}
-						}
 						return;
 					}
 				}
 
 				if (nextChapterId && novelId) {
 					// Set flag to auto-resume reading in next chapter
-					// Keep NoSleep enabled when auto-advancing to next chapter
 					setWasPlayingBeforeChapterChange(true);
 					navigate(`/novel/${novelId}/chapter/${nextChapterId}`);
-				} else {
-					// Disable NoSleep when finished reading and no next chapter
-					if (noSleepRef.current) {
-						try {
-							noSleepRef.current.disable();
-						} catch (err) {
-							console.warn("NoSleep disable failed:", err);
-						}
-					}
 				}
 				return;
 			}
@@ -256,14 +231,6 @@ export function ChapterDetailPage() {
 				setErrorMessage("Có lỗi xảy ra khi đọc. Vui lòng thử lại.");
 				setIsSpeaking(false);
 				setCurrentSegmentId(null);
-				// Disable NoSleep on error
-				if (noSleepRef.current) {
-					try {
-						noSleepRef.current.disable();
-					} catch (err) {
-						console.warn("NoSleep disable failed:", err);
-					}
-				}
 			};
 
 			synthRef.current.speak(utterance);
@@ -293,24 +260,7 @@ export function ChapterDetailPage() {
 			setIsSpeaking(false);
 			setCurrentSegmentId(null);
 			stop();
-			// Disable NoSleep when stopping
-			if (noSleepRef.current) {
-				try {
-					noSleepRef.current.disable();
-				} catch (err) {
-					console.warn("NoSleep disable failed:", err);
-				}
-			}
 		} else {
-			// Enable NoSleep when starting (must be in user interaction)
-			if (noSleepRef.current) {
-				try {
-					noSleepRef.current.enable();
-				} catch (err) {
-					console.warn("NoSleep enable failed:", err);
-				}
-			}
-
 			if (timerSettings.enabled && !isTimerActive) {
 				startTimer();
 			}
@@ -332,14 +282,6 @@ export function ChapterDetailPage() {
 			setCurrentSegmentId(null);
 			setWasPlayingBeforeChapterChange(false);
 			setTimeout(() => {
-				// Ensure NoSleep is enabled when resuming
-				if (noSleepRef.current) {
-					try {
-						noSleepRef.current.enable();
-					} catch (err) {
-						console.warn("NoSleep enable failed:", err);
-					}
-				}
 				setIsSpeaking(true);
 				currentSegmentIndexRef.current = 0;
 				speakNextSegment(0);
@@ -370,14 +312,6 @@ export function ChapterDetailPage() {
 			setCurrentSegmentId(null);
 			stop();
 			stopTimer();
-			// Disable NoSleep on cleanup
-			if (noSleepRef.current) {
-				try {
-					noSleepRef.current.disable();
-				} catch (err) {
-					console.warn("NoSleep disable failed:", err);
-				}
-			}
 		};
 	}, [stop, stopTimer]);
 
@@ -395,14 +329,6 @@ export function ChapterDetailPage() {
 			setIsSpeaking(false);
 			setCurrentSegmentId(null);
 			stop();
-			// Disable NoSleep when navigating
-			if (noSleepRef.current) {
-				try {
-					noSleepRef.current.disable();
-				} catch (err) {
-					console.warn("NoSleep disable failed:", err);
-				}
-			}
 			navigate(`/novel/${novelId}/chapter/${previousChapterId}`);
 		}
 	};
@@ -415,14 +341,6 @@ export function ChapterDetailPage() {
 			setIsSpeaking(false);
 			setCurrentSegmentId(null);
 			stop();
-			// Disable NoSleep when navigating
-			if (noSleepRef.current) {
-				try {
-					noSleepRef.current.disable();
-				} catch (err) {
-					console.warn("NoSleep disable failed:", err);
-				}
-			}
 			navigate(`/novel/${novelId}/chapter/${nextChapterId}`);
 		}
 	};
@@ -508,15 +426,6 @@ export function ChapterDetailPage() {
 			}
 			setIsSpeaking(false);
 			setCurrentSegmentId(null);
-
-			// Enable NoSleep when clicking segment (user interaction)
-			if (noSleepRef.current) {
-				try {
-					noSleepRef.current.enable();
-				} catch (err) {
-					console.warn("NoSleep enable failed:", err);
-				}
-			}
 
 			// Scroll to segment first
 			setTimeout(() => {
@@ -662,14 +571,6 @@ export function ChapterDetailPage() {
 						setIsSpeaking(false);
 						setCurrentSegmentId(null);
 						pause();
-						// Disable NoSleep when pausing
-						if (noSleepRef.current) {
-							try {
-								noSleepRef.current.disable();
-							} catch (err) {
-								console.warn("NoSleep disable failed:", err);
-							}
-						}
 					}}
 					onPrevious={handlePrevious}
 					onNext={handleNext}

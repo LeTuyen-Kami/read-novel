@@ -7,7 +7,6 @@ import { TestEdgeTTSPage } from "./pages/TestEdgeTTSPage";
 import { TestSplitTextPage } from "./pages/TestSplitTextPage";
 
 // Get base path from environment or use '/'
-const basePath = import.meta.env.BASE_URL || "/";
 
 function App() {
 	useEffect(() => {
@@ -16,7 +15,7 @@ function App() {
 	}, []);
 
 	return (
-		<BrowserRouter basename={basePath}>
+		<BrowserRouter>
 			<Routes>
 				<Route path="/" element={<HomePage />} />
 				<Route path="/test" element={<TestEdgeTTSPage />} />
