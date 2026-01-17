@@ -16,7 +16,6 @@
     "edge-tts-universal": "1.0.5",
     "jotai": "^2.16.2",
     "lucide-react": "^0.562.0",
-    "nosleep.js": "^0.12.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.12.0",

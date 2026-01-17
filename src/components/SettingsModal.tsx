@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import type { UnifiedVoice } from "../hooks/useTTS";
 import type { TimerSettings, TTSEngine } from "../types/settings";
 
+// Build time injected by Vite
+declare const __BUILD_TIME__: string;
+
 interface SettingsModalProps {
 	isOpen: boolean;
 	onClose: () => void;
@@ -361,6 +364,25 @@ export function SettingsModal({
 										</div>
 									</div>
 								)}
+							</div>
+						</div>
+
+						{/* Build Info */}
+						<div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+							<div className="text-xs text-slate-500 dark:text-slate-400 text-center">
+								<p>Phiên bản build:</p>
+								<p className="mt-1 font-mono">
+									{typeof __BUILD_TIME__ !== 'undefined'
+										? new Date(__BUILD_TIME__).toLocaleString('vi-VN', {
+												year: 'numeric',
+												month: '2-digit',
+												day: '2-digit',
+												hour: '2-digit',
+												minute: '2-digit',
+												second: '2-digit',
+											})
+										: 'Không xác định'}
+								</p>
 							</div>
 						</div>
 					</div>
