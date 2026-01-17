@@ -65,7 +65,6 @@ export function ChapterDetailPage() {
 	const [isSpeaking, setIsSpeaking] = useState(false);
 	const readingViewRef = useRef<ReadingViewRef>(null);
 	const synthRef = useRef<SpeechSynthesis | null>(null);
-	const mediaAudioRef = useRef<HTMLAudioElement | null>(null);
 	const currentSegmentIndexRef = useRef(0);
 	const flattenedSegmentsRef = useRef<
 		Array<{ text: string; id: string; type: string }>
@@ -111,21 +110,6 @@ export function ChapterDetailPage() {
 	// Initialize speech synthesis
 	useEffect(() => {
 		synthRef.current = window.speechSynthesis;
-	}, []);
-
-	// Initialize silent looping audio for Media Session
-	useEffect(() => {
-		const audio = new Audio(
-			"data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAA"
-		);
-		audio.loop = true;
-		audio.volume = 0;
-		mediaAudioRef.current = audio;
-
-		return () => {
-			audio.pause();
-			mediaAudioRef.current = null;
-		};
 	}, []);
 
 	// Load novel and chapter
@@ -269,10 +253,10 @@ export function ChapterDetailPage() {
 		if (!chapter) return;
 
 		if (isSpeaking) {
+			// Stop speaking
 			if (synthRef.current) {
 				synthRef.current.cancel();
 			}
-			mediaAudioRef.current?.pause();
 			setIsSpeaking(false);
 			setCurrentSegmentId(null);
 			stop();
@@ -281,14 +265,7 @@ export function ChapterDetailPage() {
 				startTimer();
 			}
 
-			// Ensure real audio playback for Media Session
-			mediaAudioRef.current
-				?.play()
-				.catch(() => {
-					// ignore autoplay errors
-				});
-
-			setErrorMessage(null);
+			setErrorMessage(null); // Clear previous error
 			setIsSpeaking(true);
 			currentSegmentIndexRef.current = 0;
 			speakNextSegment(0);
@@ -368,49 +345,6 @@ export function ChapterDetailPage() {
 		}
 	};
 
-	// Setup Media Session API for lock screen controls, only when audio is active
-	useEffect(() => {
-		if (
-			"mediaSession" in navigator &&
-			chapter &&
-			currentNovel &&
-			mediaAudioRef.current
-		) {
-			navigator.mediaSession.metadata = new MediaMetadata({
-				title: chapter.title,
-				artist: currentNovel.title,
-			});
-
-			navigator.mediaSession.setActionHandler("play", () => {
-				if (!isSpeaking) {
-					handlePlayPause();
-				}
-			});
-
-			navigator.mediaSession.setActionHandler("pause", () => {
-				if (isSpeaking) {
-					handlePlayPause();
-				}
-			});
-
-			navigator.mediaSession.setActionHandler("previoustrack", () => {
-				handlePrevious();
-			});
-
-			navigator.mediaSession.setActionHandler("nexttrack", () => {
-				handleNext();
-			});
-		}
-	}, [chapter, currentNovel, isSpeaking]);
-
-	// Update Media Session playback state
-	useEffect(() => {
-		if ("mediaSession" in navigator) {
-			navigator.mediaSession.playbackState = isSpeaking
-				? "playing"
-				: "paused";
-		}
-	}, [isSpeaking]);
 
 	// Get paragraphs for current chapter
 	const getParagraphs = () => {
